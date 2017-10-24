@@ -41,31 +41,29 @@ start .
 
     ![Publish Web App](images/publish-5.jpg)
 
-10. 重启Web服务使配置生效
-
-## 更新DevKit SDK源代码
-
-1. `git clone https://github.com/Microsoft/devkit-sdk`
-2. `git checkout master_audio_v2`
-3. 打开你的DevKit Arduino安装目录，C:\Users\{username}\AppData\Local\Arduino15\packages\AZ3166\hardware\stm32f4\1.2.0, 删除该目录下的所有文件
-4. `cd devkit-sdk\AZ3166\src`
-5. `start .`
-6. 复制所有文件到步骤3的Arduino安装目录
+10. 保存并重启Web服务使配置生效
 
 ## 将Arduino Sketch上传到DevKit
 
-1. 将部署好的Web服务名称替换到*DevKitChatBot.ino*中 **[your web app name]**
+1. 进入示例程序本地源代码目录,并用Visual Studio Code打开该目录:
+```
+cd ..\ChatBot
+code .
+```
+
+2. 将部署好的Web服务名称替换到*DevKitChatBot.ino*中 **[your web app name]**
    
    `static char * webAppUrl = "ws://[your web app name].azurewebsites.net";`
 
-1. 将DevKit连接到电脑上
-1. 点击Visual Stuio Code中的**任务**目录 - **运行Build任务…**
-1. 等待Arduino Code上传
+3. 将DevKit连接到电脑上
+4. 在Visual Stuio Code中，通过`Crtl P`启动任务窗口， 输入`task device-upload`并回车。
+5. Visual Studio Code会编译并上传Arduino Sketch，请耐心等待，整个过程会持续几分钟。
 
 ## 运行对话机器人
-1. 按下按钮A开启对话模式
-2. 按住按钮B开始说话，说完松开按钮B
-3. 等待语音处理
+1. 上传结束后DevKit会自动重启，网络配置请参考课程一。
+2. 在网络连接成功后，按下按钮A开启对话模式。 
+3. 按住按钮B开始说话，说完松开按钮B
+4. 等待语音处理
 
 测试对话集：
 1. Hello / Good morning / How do you do
@@ -73,4 +71,4 @@ start .
 3. Do you know Microsoft?
 4. Who is Bill Gates?
 5. How is the weather in Shanghai? / What's the weather like in Paris? / Tell me the weather in Los Angles.
-Come some music please. / Could you play some music
+6. Come some music please. / Could you play some music
