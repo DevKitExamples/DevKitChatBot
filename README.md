@@ -54,14 +54,23 @@ start .
 
 ## 将Arduino Sketch上传到DevKit
 
-1. 将部署好的WebSocket服务地址填写到DevKitChatBot.ino中
+1. 将部署好的Web服务名称替换到*DevKitChatBot.ino*中 **[your web app name]**
+   
+   `static char * webAppUrl = "ws://[your web app name].azurewebsites.net";`
+
 1. 将DevKit连接到电脑上
 1. 点击Visual Stuio Code中的**任务**目录 - **运行Build任务…**
 1. 等待Arduino Code上传
 
 ## 运行对话机器人
-1. Press button A to wake up conversation
-2. Hold button B to talk
-3. Waiting for playing reply voice message
-4. Repeat step #2&#3 to continue conversation
-5. Press button A to stop conversation (if you don't stop conversation, the device will continue to sent heartbeat every 1 min to keep connection alive)
+1. 按下按钮A开启对话模式
+2. 按住按钮B开始说话，说完松开按钮B
+3. 等待语音处理
+
+测试对话集：
+1. Hello / Good morning / How do you do
+2. Could you introduce yourself?
+3. Do you know Microsoft?
+4. Who is Bill Gates?
+5. How is the weather in Shanghai? / What's the weather like in Paris? / Tell me the weather in Los Angles.
+Come some music please. / Could you play some music
