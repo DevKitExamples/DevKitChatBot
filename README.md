@@ -5,7 +5,6 @@
 1. 安装 [Visual Studio 2017] (https://docs.microsoft.com/en-us/visualstudio/install/install-visual-studio)
 1. `git clone https://github.com/DevKitExamples/DevKitChatBot`
 1. `cd DevKitChatBot`
-1. `Code .`
 
 ## 创建WebSocket服务
 1. 进入Web App本地源代码目录
