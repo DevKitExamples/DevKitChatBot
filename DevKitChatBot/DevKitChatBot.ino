@@ -32,7 +32,7 @@ bool startPlay = false;
 // If you have multiple devices(clients) using the same WebSocket server,
 // Please ensure the nickName for each client is unique
 static char * nickName = "devkit-test";
-static char * webAppUrl = "ws://[web app name].azurewebsites.net";
+static char * webAppUrl = "ws://demobotapp-dol.azurewebsites.net";
 
 void initWiFi()
 {
@@ -100,45 +100,39 @@ void record()
 {
     ringBuffer.clear();
     Audio.format(8000, 16);
-    Audio.attachPlay(NULL);
-    Audio.attachRecord(recordCallback);
-    Audio.startRecord();
+    Audio.startRecord(recordCallback);
 }
 
 void play()
 {
     Serial.println("start playing");
     enterPlayingState();
-    
-    Audio.attachRecord(NULL);
-    Audio.attachPlay(playCallback);
+
     Audio.format(8000, 16);
-    Audio.startPlay();
+    Audio.startPlay(playCallback);
     startPlay = true;
 }
 
 void stop()
 {
     Audio.stop();
-    Audio.attachRecord(NULL);
-    Audio.attachPlay(NULL);
-    startPlay= false;
+    startPlay = false;
 }
 
 void playCallback(void)
 {
     if (ringBuffer.use() < AUDIO_CHUNK_SIZE)
     {
-      Audio.write(emptyAudio, AUDIO_CHUNK_SIZE);
+      Audio.writeToPlayBuffer(emptyAudio, AUDIO_CHUNK_SIZE);
       return;
     }
     ringBuffer.get((uint8_t*)readBuffer, AUDIO_CHUNK_SIZE);
-    Audio.write(readBuffer, AUDIO_CHUNK_SIZE);
+    Audio.writeToPlayBuffer(readBuffer, AUDIO_CHUNK_SIZE);
 }
 
 void recordCallback(void)
 {
-    Audio.read(readBuffer, AUDIO_CHUNK_SIZE);
+    Audio.readFromRecordBuffer(readBuffer, AUDIO_CHUNK_SIZE);
     ringBuffer.put((uint8_t*)readBuffer, AUDIO_CHUNK_SIZE);
 }
 
@@ -371,4 +365,3 @@ void doWork()
             enterActiveState();
     }
 }
-
