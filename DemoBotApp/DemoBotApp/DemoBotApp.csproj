@@ -70,7 +70,8 @@
     </Reference>
     <Reference Include="Microsoft.CSharp" />
     <Reference Include="Microsoft.Rest.ClientRuntime, Version=2.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL">
-      <HintPath>..\packages\Microsoft.Rest.ClientRuntime.2.3.2\lib\net45\Microsoft.Rest.ClientRuntime.dll</HintPath>
+      <HintPath>..\packages\Microsoft.Rest.ClientRuntime.2.3.4\lib\net45\Microsoft.Rest.ClientRuntime.dll</HintPath>
+      <Private>True</Private>
     </Reference>
     <Reference Include="Microsoft.VisualStudio.Threading, Version=14.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL">
       <HintPath>..\packages\Microsoft.VisualStudio.Threading.14.1.131\lib\net45\Microsoft.VisualStudio.Threading.dll</HintPath>
@@ -166,21 +167,15 @@
     <Compile Include="App_Start\WebApiConfig.cs" />
     <Compile Include="BotClientHelper.cs" />
     <Compile Include="BotMessage.cs" />
-    <Compile Include="Cognitive\Enums.cs" />
-    <Compile Include="Cognitive\CognitiveTokenProvider.cs" />
-    <Compile Include="Cognitive\SpeechRecognitionClient.cs" />
-    <Compile Include="Cognitive\SynthesisOptions.cs" />
-    <Compile Include="Cognitive\SpeechSynthesisClient.cs" />
+    <Compile Include="Cognitive\CognitiveServicesAuthorizationProvider.cs" />
+    <Compile Include="Cognitive\TTSClient.cs" />
     <Compile Include="Constants.cs" />
     <Compile Include="Controllers\WebsocketController.cs" />
-    <Compile Include="Controllers\VoiceCommandController.cs" />
     <Compile Include="DemoBotServiceException.cs" />
     <Compile Include="Global.asax.cs">
       <DependentUpon>Global.asax</DependentUpon>
     </Compile>
-    <Compile Include="Models\PostVoiceCommandResponse.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="Cognitive\SpeechRecognitionResult.cs" />
     <Compile Include="SampleMusic.cs" />
     <Compile Include="WebSocket\HttpContextExtension.cs" />
     <Compile Include="WebSocket\WebSocketHandler.cs" />
@@ -190,7 +185,6 @@
     <Content Include="ApplicationInsights.config">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <None Include="Properties\PublishProfiles\DemoBotApp20171024122101 - Web Deploy.pubxml" />
     <None Include="Web.Debug.config">
       <DependentUpon>Web.config</DependentUpon>
     </None>

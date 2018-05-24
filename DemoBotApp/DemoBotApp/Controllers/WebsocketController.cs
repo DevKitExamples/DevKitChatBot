@@ -11,6 +11,8 @@
     using System.Threading.Tasks;
     using System.Web;
     using System.Web.Http;
+    using CognitiveServicesAuthorization;
+    using CognitiveServicesTTS;
     using DemoBotApp.WebSocket;
     using Microsoft.Bing.Speech;
     using Microsoft.Bot.Connector.DirectLine;
@@ -19,14 +21,11 @@
     [RoutePrefix("chat")]
     public class WebsocketController : ApiController
     {
-        private static readonly Uri ShortPhraseUrl = new Uri(Constants.ShortPhraseUrl);
-        private static readonly Uri LongDictationUrl = new Uri(Constants.LongPhraseUrl);
         private static readonly Uri SpeechSynthesisUrl = new Uri(Constants.SpeechSynthesisUrl);
         private static readonly string CognitiveSubscriptionKey = ConfigurationManager.AppSettings["CognitiveSubscriptionKey"];
 
-        private SpeechClient speechRocognitionClient;
-        private SpeechSynthesisClient ttsClient;
-        private string speechLocale = Constants.SpeechLocale;
+        private Preferences speechPreference;
+        private string speechText = string.Empty;
         private readonly CancellationTokenSource cts = new CancellationTokenSource();
 
         private DirectLineClient directLineClient;
@@ -42,14 +41,11 @@
             // Setup bot client
             this.directLineClient = new DirectLineClient(DirectLineSecret);
 
-            // Setup speech recognition client
-            Preferences speechPreference = new Preferences(speechLocale, ShortPhraseUrl, new CognitiveTokenProvider(CognitiveSubscriptionKey));
-            this.speechRocognitionClient = new SpeechClient(speechPreference);
-            
-
-            // Setup speech synthesis client
-            SynthesisOptions synthesisOption = new SynthesisOptions(SpeechSynthesisUrl, CognitiveSubscriptionKey);
-            this.ttsClient = new SpeechSynthesisClient(synthesisOption);
+            // Setup preference for speech recognition (speech-to-text)
+            this.speechPreference = new Preferences(
+                Constants.SpeechLocale,
+                new Uri(Constants.ShortPhraseUrl),
+                new CognitiveServicesAuthorizationProvider(CognitiveSubscriptionKey));
         }
 
         [Route]
@@ -107,7 +103,6 @@
 
             webSocketHandler.OnClosed += (sender, arg) =>
             {
-                //webSocketHandler.SendMessage(nickName + " Disconnected!").Wait();
                 handlers.Remove(nickName);
             };
 
@@ -117,74 +112,39 @@
 
         private async Task OnTextMessageReceived(WebSocketHandler handler, string message, string conversationId, string watermark)
         {
-            await BotClientHelper.SendBotMessageAsync(this.directLineClient, conversationId, FromUserId, message);
-            BotMessage botResponse = await BotClientHelper.ReceiveBotMessagesAsync(this.directLineClient, conversationId, watermark);
-
-            // Convert text to speech
-            byte[] totalBytes;
-            if (botResponse.Text.Contains("Music.Play"))
-            {
-                totalBytes = ((MemoryStream)SampleMusic.GetStream()).ToArray();
-                handler.SendBinary(totalBytes).Wait();
-            }
-            else
-            {
-                totalBytes = await ttsClient.SynthesizeTextToBytesAsync(botResponse.Text, CancellationToken.None);
-
-                WaveFormat target = new WaveFormat(8000, 16, 2);
-                MemoryStream outStream = new MemoryStream();
-                using (WaveFormatConversionStream conversionStream = new WaveFormatConversionStream(target, new WaveFileReader(new MemoryStream(totalBytes))))
-                {
-                    WaveFileWriter.WriteWavFileToStream(outStream, conversionStream);
-                    outStream.Position = 0;
-                }
-
-                handler.SendBinary(outStream.ToArray()).Wait();
-                outStream.Dispose();
-            }
+            await handler.SendMessage($"You said: {message}");
         }
 
         private async Task OnBinaryMessageReceived(WebSocketHandler handler, byte[] bytes, string conversationId, string watermark)
         {
-            // Convert speech to Text
-            string speechText = null;
+            // Convert speech to text
             try
             {
-                using (SpeechRecognitionClient client = new SpeechRecognitionClient(CognitiveSubscriptionKey))
+                using (var speechClient = new SpeechClient(this.speechPreference))
                 {
+                    speechClient.SubscribeToRecognitionResult(this.OnRecognitionResult);
+
+                    // create an audio content and pass it a stream.
                     using (MemoryStream audioStream = new MemoryStream(bytes))
                     {
-                        speechText = await client.ConvertSpeechToTextAsync(audioStream);
+                        var deviceMetadata = new DeviceMetadata(DeviceType.Near, DeviceFamily.Desktop, NetworkType.Wifi, OsName.Windows, "1607", "Dell", "T3600");
+                        var applicationMetadata = new ApplicationMetadata("SampleApp", "1.0.0");
+                        var requestMetadata = new RequestMetadata(Guid.NewGuid(), deviceMetadata, applicationMetadata, "SampleAppService");
+
+                        await speechClient.RecognizeAsync(new SpeechInput(audioStream, requestMetadata), this.cts.Token).ConfigureAwait(false);
                     }
+
                 }
-                
-                /*
-                using (Stream audio = new MemoryStream(bytes))
-                {
-                    var deviceMetadata = new DeviceMetadata(DeviceType.Near, DeviceFamily.Desktop, NetworkType.Wifi, OsName.Windows, "N/A", "N/A", "N/A");
-                    var applicationMetadata = new ApplicationMetadata("SampleApp", "1.0.0");
-                    var requestMetadata = new RequestMetadata(Guid.NewGuid(), deviceMetadata, applicationMetadata, "DemoBotApp");
-
-                    this.speechRocognitionClient.SubscribeToRecognitionResult((result) =>
-                    {
-                        if (result.RecognitionStatus == RecognitionStatus.Success)
-                        {
-                            speechText = result.Phrases[0].DisplayText;
-                        }
-
-                        return Task.FromResult(true);
-                    });
-
-                    await this.speechRocognitionClient.RecognizeAsync(new SpeechInput(audio, requestMetadata), this.cts.Token).ConfigureAwait(false);
-                }
-                */
             }
-            catch
+            catch (Exception e)
             {
-                // Failed to convert speech to text
+                throw new DemoBotServiceException($"Convert text to speech failed: {e.Message}");
             }
+
+            // await handler.SendMessage($"You said: {this.speechText}");
 
             string replyMessage = null;
+
             if (!string.IsNullOrEmpty(speechText))
             {
                 // Send text message to Bot Service
@@ -197,30 +157,73 @@
                 replyMessage = "Sorry, I don't understand.";
             }
 
-            //await handlers[nickName].SendMessage($"user said: {message}, bot reply: {botResult.Text}, watermark: {botResult.Watermark}, replayToId: {botResult.ReplyToId}");
-
             // Convert text to speech
             byte[] totalBytes;
             if (replyMessage.Contains("Music.Play"))
             {
                 totalBytes = ((MemoryStream)SampleMusic.GetStream()).ToArray();
-                handler.SendBinary(totalBytes).Wait();
+                await handler.SendBinary(totalBytes);
             }
             else
             {
-                totalBytes = await ttsClient.SynthesizeTextToBytesAsync(replyMessage, CancellationToken.None);
-
-                WaveFormat target = new WaveFormat(8000, 16, 2);
-                MemoryStream outStream = new MemoryStream();
-                using (WaveFormatConversionStream conversionStream = new WaveFormatConversionStream(target, new WaveFileReader(new MemoryStream(totalBytes))))
+                try
                 {
-                    WaveFileWriter.WriteWavFileToStream(outStream, conversionStream);
-                    outStream.Position = 0;
+                    var authorizationProvider = new CognitiveServicesAuthorizationProvider(CognitiveSubscriptionKey);
+                    string accessToken = await authorizationProvider.GetAuthorizationTokenAsync();
+
+                    var cortana = new Synthesize();
+                    totalBytes = await cortana.Speak(CancellationToken.None, new Synthesize.InputOptions()
+                    {
+                        RequestUri = new Uri(Constants.SpeechSynthesisUrl),
+                        Text = replyMessage,
+                        VoiceType = Gender.Female,
+                        Locale = "en-US",
+                        VoiceName = "Microsoft Server Speech Text to Speech Voice (en-US, ZiraRUS)",
+
+                        // Service can return audio in different output format.
+                        OutputFormat = AudioOutputFormat.Riff16Khz16BitMonoPcm,
+                        AuthorizationToken = "Bearer " + accessToken,
+                    });
+
+                    // convert the audio format and send back to client
+                    WaveFormat target = new WaveFormat(8000, 16, 2);
+                    MemoryStream outStream = new MemoryStream();
+                    using (WaveFormatConversionStream conversionStream = new WaveFormatConversionStream(target, new WaveFileReader(new MemoryStream(totalBytes))))
+                    {
+                        WaveFileWriter.WriteWavFileToStream(outStream, conversionStream);
+                        outStream.Position = 0;
+                    }
+
+                    handler.SendBinary(outStream.ToArray()).Wait();
+                    outStream.Dispose();
+                }
+                catch (Exception e)
+                {
+                    throw new DemoBotServiceException($"Convert text to speech failed: {e.Message}");
                 }
 
-                handler.SendBinary(outStream.ToArray()).Wait();
-                outStream.Dispose();
             }
+        }
+
+        /// <summary>
+        /// Invoked when the speech client receives a phrase recognition result(s) from the server.
+        /// </summary>
+        /// <param name="args">The recognition result.</param>
+        /// <returns>
+        /// A task
+        /// </returns>
+        private Task OnRecognitionResult(RecognitionResult args)
+        {
+            this.speechText = string.Empty;
+
+            var response = args;
+
+            if (response.RecognitionStatus == RecognitionStatus.Success)
+            {
+                this.speechText = response.Phrases[0].DisplayText;
+            }
+
+            return Task.FromResult(true);
         }
     }
 }
