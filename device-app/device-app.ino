@@ -2,16 +2,16 @@
 #include "AZ3166WiFi.h"
 #include "http_client.h"
 #include "AudioClassV2.h"
-#include "Websocket.h"
 #include "RingBuffer.h"
 #include "SystemTickCounter.h"
+#include "WebSocketClient.h"
 
-#define HEARTBEAT_INTERVAL  60000
+#define HEARTBEAT_INTERVAL 60000
 #define RING_BUFFER_SIZE 32000
 #define PLAY_DELAY_RATE 0.1
 
 static bool hasWifi;
-static bool connect_state;
+static bool isWsConnected;
 static int lastButtonAState;
 static int buttonAState;
 static int lastButtonBState;
@@ -19,61 +19,67 @@ static int buttonBState;
 static volatile int status;
 static uint64_t hb_interval_ms;
 
-static AudioClass& Audio = AudioClass::getInstance();
+static AudioClass &Audio = AudioClass::getInstance();
+static WebSocketClient *wsClient;
 
 RingBuffer ringBuffer(RING_BUFFER_SIZE);
 char readBuffer[AUDIO_CHUNK_SIZE];
 char websocketBuffer[5000];
 
 static char emptyAudio[AUDIO_CHUNK_SIZE];
-Websocket *websocket;
 bool startPlay = false;
 
 // If you have multiple devices(clients) using the same WebSocket server,
 // Please ensure the nickName for each client is unique
-static char * nickName = "devkit-test";
-static char * webAppUrl = "ws://demo-bot-app.azurewebsites.net";
+static char *nickName = "devkit-test";
+static char *webAppUrl = "ws://demo-bot-app.azurewebsites.net";
 
 void initWiFi()
 {
     Screen.print("IoT DevKit\r\n \r\nConnecting...\r\n");
-  
+
     if (WiFi.begin() == WL_CONNECTED)
     {
-      IPAddress ip = WiFi.localIP();
-      Screen.print(1, ip.get_address());
-      hasWifi = true;
-      Screen.print(2, "Running... \r\n");
+        IPAddress ip = WiFi.localIP();
+        Screen.print(1, ip.get_address());
+        hasWifi = true;
+        Screen.print(2, "Running... \r\n");
     }
     else
     {
-      Screen.print(1, "No Wi-Fi\r\n ");
+        Screen.print(1, "No Wi-Fi\r\n ");
     }
 }
 
-int connectWebSocket()
+bool connectWebSocket()
 {
     Screen.clean();
     Screen.print(0, "Connect to WS...");
-    char *url = getWebSocketUrl();
-    websocket = new Websocket(url);
-    connect_state = (*websocket).connect();
-    if (connect_state == 1)
+
+    char *webSocketServerUrl = getWebSocketUrl();
+    if (wsClient == NULL)
     {
-        Serial.println("WebSocket connect succeeded.");
+        wsClient = new WebSocketClient(webSocketServerUrl);
+    }
+
+    isWsConnected = wsClient->connect();
+    if (isWsConnected)
+    {
+        Serial.println("connect WS successfully.");
+        Screen.print(1, "connect WS successfully.");
 
         // Trigger heart beat immediately
         hb_interval_ms = -(HEARTBEAT_INTERVAL);
         sendHeartbeat();
-        return 0;
+        return true;
     }
     else
     {
         Screen.print(1, "Connect WS fail");
         Screen.print(2, "Press A to retry");
-        Serial.print("WebSocket connection failed, connect_state: ");
-        Serial.println(connect_state);
-        return -1;
+        Serial.println("Connect WS fail");
+
+        return false;
     }
 }
 
@@ -81,17 +87,18 @@ void sendHeartbeat()
 {
     if ((int)(SystemTickCounterRead() - hb_interval_ms) < HEARTBEAT_INTERVAL)
     {
-      return;
+        return;
     }
 
     // Send haertbeart message
-    Serial.println(">>Heartbeat<<");      
-    int ret = (*websocket).send("heartbeat", 9);
-    if (ret ==  -1)
+    Serial.println(">>Heartbeat<<");
+    int ret = wsClient->send("heartbeat", 9, WS_Message_Text);
+    if (ret < 0)
     {
         // Heartbeat failure, disconnet from WS
         enterIdleState();
     }
+
     // Reset heartbeat
     hb_interval_ms = SystemTickCounterRead();
 }
@@ -123,40 +130,40 @@ void playCallback(void)
 {
     if (ringBuffer.use() < AUDIO_CHUNK_SIZE)
     {
-      Audio.writeToPlayBuffer(emptyAudio, AUDIO_CHUNK_SIZE);
-      return;
+        Audio.writeToPlayBuffer(emptyAudio, AUDIO_CHUNK_SIZE);
+        return;
     }
-    ringBuffer.get((uint8_t*)readBuffer, AUDIO_CHUNK_SIZE);
+    ringBuffer.get((uint8_t *)readBuffer, AUDIO_CHUNK_SIZE);
     Audio.writeToPlayBuffer(readBuffer, AUDIO_CHUNK_SIZE);
 }
 
 void recordCallback(void)
 {
     Audio.readFromRecordBuffer(readBuffer, AUDIO_CHUNK_SIZE);
-    ringBuffer.put((uint8_t*)readBuffer, AUDIO_CHUNK_SIZE);
+    ringBuffer.put((uint8_t *)readBuffer, AUDIO_CHUNK_SIZE);
 }
 
-void setResponseBodyCallback(const char* data, size_t dataSize)
+void setResponseBodyCallback(const char *data, size_t dataSize)
 {
     if (status == 3)
     {
         enterReceivingState();
     }
-    
-    while(ringBuffer.available() < dataSize)
+
+    while (ringBuffer.available() < dataSize)
     {
         delay(10);
     }
-    
-    ringBuffer.put((uint8_t*)data, dataSize);
+
+    ringBuffer.put((uint8_t *)data, dataSize);
     if (ringBuffer.use() > RING_BUFFER_SIZE * PLAY_DELAY_RATE && startPlay == false)
     {
         play();
     }
 }
 
-char* getWebSocketUrl()
-{    
+char *getWebSocketUrl()
+{
     char *url;
     url = (char *)malloc(300);
 
@@ -165,15 +172,15 @@ char* getWebSocketUrl()
         return NULL;
     }
     HTTPClient guidRequest = HTTPClient(HTTP_GET, "http://www.fileformat.info/tool/guid.htm?count=1&format=text&hyphen=true");
-    const Http_Response* _response = guidRequest.send();
+    const Http_Response *_response = guidRequest.send();
     if (_response == NULL)
     {
         Serial.println("Guid generator HTTP request failed.");
         return NULL;
     }
-    
+
     snprintf(url, 300, "%s/chat?nickName=%s", webAppUrl, _response->body);
-    Serial.print("WebSocket url: ");
+    Serial.print("WebSocket server url: ");
     Serial.println(url);
     return url;
 }
@@ -199,7 +206,7 @@ void enterRecordingState()
 {
     status = 2;
     Screen.clean();
-    Screen.print(0,"Recording...");
+    Screen.print(0, "Recording...");
     Screen.print(1, "Release B to send    ");
     Serial.println("Release B to send    ");
 }
@@ -208,7 +215,7 @@ void enterServerProcessingState()
 {
     status = 3;
     Screen.clean();
-    Screen.print(0,"Processing...");
+    Screen.print(0, "Processing...");
     Screen.print(1, "Thinking...", true);
 }
 
@@ -232,17 +239,17 @@ void setup()
     Screen.init();
     Screen.print(0, "IoT DevKit");
     Screen.print(2, "Initializing...");
-    
+
     Screen.print(3, " > Serial");
     Serial.begin(115200);
-  
+
     // Initialize the WiFi module
     Screen.print(3, " > WiFi");
     hasWifi = false;
     initWiFi();
     if (!hasWifi)
     {
-      return;
+        return;
     }
 
     pinMode(USER_BUTTON_A, INPUT);
@@ -259,109 +266,110 @@ void loop()
     if (hasWifi)
     {
         doWork();
-    }   
+    }
 }
 
 void doWork()
 {
     switch (status)
     {
-        // Idle
-        case 0:
-            buttonAState = digitalRead(USER_BUTTON_A);
-            if (buttonAState == LOW)
+    // Idle
+    case 0:
+        buttonAState = digitalRead(USER_BUTTON_A);
+        if (buttonAState == LOW)
+        {
+            if (connectWebSocket())
             {
-                if (connectWebSocket() == 0)
-                {
-                    enterActiveState();
-                }
+                enterActiveState();
             }
-          break;
+        }
+        break;
 
-        // Active state, ready for conversation
-        case 1:
-            buttonBState = digitalRead(USER_BUTTON_B);
-            if (buttonBState == LOW)
-            {
-                (*websocket).send("pcmstart", 4, 0x02);
-                record();
-                enterRecordingState();
-            }
+    // Active state, ready for conversation
+    case 1:
+        buttonBState = digitalRead(USER_BUTTON_B);
+        if (buttonBState == LOW)
+        {
+            record();
+            enterRecordingState();
+        }
 
-            buttonAState = digitalRead(USER_BUTTON_A);
-            if (buttonAState == LOW)
+        buttonAState = digitalRead(USER_BUTTON_A);
+        if (buttonAState == LOW)
+        {
+            if (wsClient->close())
             {
-                if((*websocket).close())
-                {
-                    Serial.println("WebSocket close succeeded.");
-                    Screen.print("End conversation");
-                    delay(200);
-                    connect_state = 0;
-                    enterIdleState();
-                }
-                else
-                {
-                    Serial.println("WebSocket close failed.");
-                }
+                Serial.println("WebSocket close succeeded.");
+                Screen.print("End conversation");
+                delay(200);
+                isWsConnected = false;
+                enterIdleState();
             }
+            else
+            {
+                Serial.println("WebSocket close failed.");
+            }
+        }
 
-            sendHeartbeat();            
-            break;
-            
-        // Recording state
-        case 2:
-            while(digitalRead(USER_BUTTON_B) == LOW || ringBuffer.use() > 0)
-            {
-                if (digitalRead(USER_BUTTON_B) == HIGH)
-                {
-                    stop();
-                }
-                
-                int sz = ringBuffer.get((uint8_t*)websocketBuffer, AUDIO_CHUNK_SIZE);
-                if (sz > 0)
-                {
-                  (*websocket).send(websocketBuffer, sz, 0x00);
-                }
-            }
-    
-            if (Audio.getAudioState() == AUDIO_STATE_RECORDING)
+        sendHeartbeat();
+        break;
+
+    // Recording state
+    case 2:
+        while (digitalRead(USER_BUTTON_B) == LOW || ringBuffer.use() > 0)
+        {
+            if (digitalRead(USER_BUTTON_B) == HIGH)
             {
                 stop();
             }
-            
-            // Mark binary message end
-            (*websocket).send("pcmend", 4, 0x80);
-            Serial.println("Your voice message is sent.");
-            enterServerProcessingState();
-          break;
 
-        // Receiving and playing
-        case 3:           
-            unsigned char opcode = 0;
-            int len = 0;
-            bool firstReceived = true;
-            while ((opcode & 0x80) == 0x00)
+            int sz = ringBuffer.get((uint8_t *)websocketBuffer, AUDIO_CHUNK_SIZE);
+            if (sz > 0)
             {
-                int receivedSize = (*websocket).read(websocketBuffer, &len, &opcode, firstReceived);
-                //printf("receivedSize %d recv len %d opcode %d\r\n", receivedSize, len, opcode);
-                
-                if (receivedSize == 0){
-                    break;
-                }
-                firstReceived = false;
-                setResponseBodyCallback(websocketBuffer, len);
+                wsClient->send(websocketBuffer, sz, WS_Message_Binary);
             }
-        
-            if (startPlay == false)
-            {
-              play();
-            }
-            
-            while(ringBuffer.use() >= AUDIO_CHUNK_SIZE)
-            {
-                delay(100);
-            }
+        }
+
+        if (Audio.getAudioState() == AUDIO_STATE_RECORDING)
+        {
             stop();
-            enterActiveState();
+        }
+
+        Serial.println("Your voice message is sent.");
+        enterServerProcessingState();
+        break;
+
+    // Receiving and playing
+    case 3:
+        bool isEndOfMessage = false;
+        WebSocketReceiveResult *recvResult = NULL;
+        int len = 0;
+
+        do
+        {
+            recvResult = wsClient->receive(websocketBuffer, sizeof(websocketBuffer));
+
+            if (!recvResult && recvResult->length > 0)
+            {
+                len = recvResult->length;
+                isEndOfMessage = recvResult->isEndOfMessage;
+                setResponseBodyCallback(websocketBuffer, len);
+                Serial.printf("received: %d\r\n", len);
+
+                memset(websocketBuffer, 0, sizeof(websocketBuffer));
+            }
+        } while (!isEndOfMessage);
+
+        if (startPlay == false)
+        {
+            play();
+        }
+
+        while (ringBuffer.use() >= AUDIO_CHUNK_SIZE)
+        {
+            delay(100);
+        }
+        stop();
+        enterActiveState();
     }
 }
