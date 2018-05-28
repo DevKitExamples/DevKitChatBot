@@ -7,6 +7,7 @@
     using System.Linq;
     using System.Net;
     using System.Net.Http;
+    using System.Text;
     using System.Threading;
     using System.Threading.Tasks;
     using System.Web;
@@ -117,6 +118,8 @@
 
         private async Task OnBinaryMessageReceived(WebSocketHandler handler, byte[] bytes, string conversationId, string watermark)
         {
+            string replyMessage = null;
+
             // Convert speech to text
             try
             {
@@ -131,19 +134,17 @@
                         var applicationMetadata = new ApplicationMetadata("SampleApp", "1.0.0");
                         var requestMetadata = new RequestMetadata(Guid.NewGuid(), deviceMetadata, applicationMetadata, "SampleAppService");
 
-                        await speechClient.RecognizeAsync(new SpeechInput(audioStream, requestMetadata), this.cts.Token).ConfigureAwait(false);
+                        await speechClient.RecognizeAsync(new SpeechInput(PCMToWAV(audioStream), requestMetadata), this.cts.Token).ConfigureAwait(false);
                     }
 
                 }
             }
             catch (Exception e)
             {
-                throw new DemoBotServiceException($"Convert text to speech failed: {e.Message}");
+                //throw new DemoBotServiceException($"Convert text to speech failed: {e.Message}");
             }
 
             // await handler.SendMessage($"You said: {this.speechText}");
-
-            string replyMessage = null;
 
             if (!string.IsNullOrEmpty(speechText))
             {
@@ -224,6 +225,33 @@
             }
 
             return Task.FromResult(true);
+        }
+
+        private Stream PCMToWAV(Stream stream)
+        {
+            int length = (int)stream.Length;
+            ASCIIEncoding encoding = new System.Text.ASCIIEncoding();
+            byte[] bytes = new byte[44 + length];
+            byte[] header = encoding.GetBytes("RIFF0000WAVEfmt 00000000000000000000data0000");
+            WriteIntToByteArray(header, 4, length + 36);
+            WriteIntToByteArray(header, 16, 16);
+            WriteIntToByteArray(header, 20, (2 << 0x10) + 1);
+            WriteIntToByteArray(header, 24, 8000);
+            WriteIntToByteArray(header, 28, 32000);
+            WriteIntToByteArray(header, 32, (16 << 0x10) + 4);
+            WriteIntToByteArray(header, 40, length);
+            Buffer.BlockCopy(header, 0, bytes, 0, 44);
+            stream.Read(bytes, 44, length);
+            stream.Seek(0, SeekOrigin.Begin);
+            return new MemoryStream(bytes);
+        }
+
+        void WriteIntToByteArray(byte[] buffer, int offset, int value)
+        {
+            buffer[offset] = (byte)value;
+            buffer[offset + 1] = (byte)(value >> 8);
+            buffer[offset + 2] = (byte)(value >> 0x10);
+            buffer[offset + 3] = (byte)(value >> 0x18);
         }
     }
 }
