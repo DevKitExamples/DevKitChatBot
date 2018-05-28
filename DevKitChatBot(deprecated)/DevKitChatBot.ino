@@ -333,7 +333,7 @@ void doWork()
             (*websocket).send("pcmend", 4, 0x80);
             Serial.println("Your voice message is sent.");
             enterServerProcessingState();
-          break;
+            break;
 
         // Receiving and playing
         case 3:           

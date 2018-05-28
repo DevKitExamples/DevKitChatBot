@@ -24,7 +24,7 @@ static WebSocketClient *wsClient;
 
 RingBuffer ringBuffer(RING_BUFFER_SIZE);
 char readBuffer[AUDIO_CHUNK_SIZE];
-char websocketBuffer[5000];
+char websocketBuffer[4096];
 
 static char emptyAudio[AUDIO_CHUNK_SIZE];
 bool startPlay = false;
@@ -326,7 +326,7 @@ void doWork()
             int sz = ringBuffer.get((uint8_t *)websocketBuffer, AUDIO_CHUNK_SIZE);
             if (sz > 0)
             {
-                wsClient->send(websocketBuffer, sz, WS_Message_Binary);
+                wsClient->send(websocketBuffer, sz, WS_Message_Binary, false);
             }
         }
 
@@ -335,6 +335,8 @@ void doWork()
             stop();
         }
 
+        // Mark binary message end
+        wsClient->send("0x00", 4, WS_Message_Binary, true);
         Serial.println("Your voice message is sent.");
         enterServerProcessingState();
         break;
@@ -345,20 +347,16 @@ void doWork()
         WebSocketReceiveResult *recvResult = NULL;
         int len = 0;
 
-        do
+        while (!isEndOfMessage)
         {
             recvResult = wsClient->receive(websocketBuffer, sizeof(websocketBuffer));
-
-            if (!recvResult && recvResult->length > 0)
+            if (recvResult != NULL && recvResult->length > 0)
             {
                 len = recvResult->length;
                 isEndOfMessage = recvResult->isEndOfMessage;
                 setResponseBodyCallback(websocketBuffer, len);
-                Serial.printf("received: %d\r\n", len);
-
-                memset(websocketBuffer, 0, sizeof(websocketBuffer));
             }
-        } while (!isEndOfMessage);
+        };
 
         if (startPlay == false)
         {
