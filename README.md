@@ -17,7 +17,7 @@ This is a proof of concept to use IoT DevKit to build an intelligent chat bot wi
 
 2. Click **Create new resource** link found on the upper left-hand corner of the Azure portal, then select **AI + Cognitive Services > Web App bot**. A new blade will open with information about the **Web App Bot**.
 
-3. In the **Bot Service** blade, provide the requested information about your bot as specified in the table below the image.
+3. In the **Bot Service** blade, provide the requested information about your bot as specified in the following image:
 
     > **Note**: please choose the **Language understanding** (C#) as your bot template.
 
@@ -25,7 +25,7 @@ This is a proof of concept to use IoT DevKit to build an intelligent chat bot wi
 
 4. Click **Create** to create the service and deploy the bot to the cloud. This process may take several minutes.
 
-5. When the bot servie is created, you can test it in Web Chat from Azure Portal. Enter a creeting message and your bot should give the response.
+5. When the bot servie is created, you can test it in Web Chat from Azure Portal. Enter a greeting message and your bot should give the response.
 
     ![test-bot-service](assets/images/test-bot-service.png)
 
